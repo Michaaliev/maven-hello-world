@@ -1,0 +1,86 @@
+name: Java CI with Maven
+on:
+  push:
+    branches: [ "dev" ]   # trigger pipeline for push to dev branch
+    
+env:
+  IMG: michaaliev/hello_world   # env variable - docker hub repository 
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up JDK 8   # the project is written in java version 8 (as mentioned in the pom file)
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Clean   # clean to ensure no left over artifacts from previous builds
+      run: mvn -B clean --file my-app/pom.xml   
+    
+    - name: Create var for versioning   # using bash to extract the version from the Pom file and increment the patch num
+      run: | 
+        cd ./my-app
+        sed -n 7p pom.xml >> temp
+        sed 's/[^0-9.]//g' temp >> version
+        v=`cat version`
+        v=`echo "${v%.*}.$((${v##*.}+1))"`
+        rm temp version
+        echo "IMG_VERS=$v" >> $GITHUB_ENV     # creating env variable for the incremented version
+        
+    - name: Build with Maven
+      run: |
+       cd ./my-app
+       mvn versions:set -DnewVersion=$IMG_VERS -B --file pom.xml   # update the pom file in the repository for the new version
+       mvn -B package --file pom.xml   # build with the new version
+    
+    - name: Create Script
+      run: echo "docker run --name hello_world -dit $IMG:$IMG_VERS sh" > docker.sh   # creating a script for deploying the app on the EC2
+    
+    - name: Login to Docker Hub   # login to docker hub via username and token entered in the secrets and created env variables
+      uses: docker/login-action@v2
+      with:
+          username: ${{ secrets.DOCHUB_USERNAME }}   
+          password: ${{ secrets.DOCHUB_ACCESS_TOKEN }}
+    
+    - name: Build & Tag & Push docker image
+      run: |
+         docker image build -t $IMG:$IMG_VERS .    # creating an image and giving it a tag michaaliev/hello_world:version
+         docker push $IMG:$IMG_VERS
+  
+    - name: update version in pom file    # commiting the new updated version pom file to the scm and the docker run script
+      run: |
+          git config --global user.name "Michaaliev"
+          git config --global user.email "Michaaliev1663@gmail.com@gmail.com"
+          git add docker.sh
+          git add ./my-app/pom.xml 
+          git commit -m "version update"
+          git push
+  
+  
+  Deploy:    # deploy phase
+    needs: build
+    runs-on: ubuntu-20.04
+    
+    steps:
+      - uses: actions/checkout@v2 
+      - name: Deploy in EC2
+        env:
+            PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY  }}   # credentials added to the secrets
+            HOSTNAME : ${{ secrets.EC2_HOSTNAME  }}
+            USER_NAME : ${{ secrets.EC2_USER_NAME  }}
+            
+        run: |  # connecting via ssh to EC2 & downloading the script 'docker.sh' from my scm to the EC2 
+          echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
+          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          cd /home/ec2-user
+          curl -O https://raw.githubusercontent.com/Michaaliev/maven-hello-world/dev/docker.sh   
+          chmod +x docker.sh
+          ./docker.sh
+          docker kill hello_world    
+          docker rm hello_world    # cleaning EC2
+          '
