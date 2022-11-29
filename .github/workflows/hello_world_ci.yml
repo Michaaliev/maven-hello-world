@@ -73,7 +73,8 @@ jobs:
         run: |  # connecting via ssh to EC2 & downloading the script 'docker.sh' from my scm to the EC2 
           echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
           ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          docker run --name hello_world -dit michaaliev/hello_world sh
+          docker run --name hello_world -dit michaaliev/hello_world 
           docker kill hello_world    
-          docker rm hello_world    # cleaning EC2
+          docker rm hello_world
+          docker image rm michaaliev/hello_world # cleaning EC2
           '
