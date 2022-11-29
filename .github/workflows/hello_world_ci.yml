@@ -52,7 +52,7 @@ jobs:
     - name: update version in pom file    # commiting the new updated version pom file to the scm and the docker run script
       run: |
           git config --global user.name "Michaaliev"
-          git config --global user.email "Michaaliev1663@gmail.com@gmail.com"
+          git config --global user.email "Michaaliev1663@gmail.com"
           git add ./my-app/pom.xml 
           git commit -m "version update"
           git push
