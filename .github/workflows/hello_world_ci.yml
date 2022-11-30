@@ -63,7 +63,6 @@ jobs:
     runs-on: ubuntu-20.04
     
     steps:
-      - uses: actions/checkout@v2 
       - name: Deploy in EC2
         env:
             PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY  }}   # credentials added to the secrets
